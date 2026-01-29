@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_NAME=terraform-ansible-ssm
-AWS_REGION=${AWS_REGION:-us-east-2}
+AWS_REGION=${AWS_REGION:-us-east-1}
 AWS_PROFILE=${AWS_PROFILE:-default}
 AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export AWS_PAGER=""

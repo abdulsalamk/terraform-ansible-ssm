@@ -1,5 +1,5 @@
 resource "aws_default_subnet" "az1" {
-  availability_zone = "us-east-2a"
+  availability_zone = "${var.aws_region}a"
 }
 
 data "aws_ami" "ubuntu_22_04_server_amd_64" {
