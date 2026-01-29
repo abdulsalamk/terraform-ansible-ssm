@@ -1,6 +1,6 @@
-resource "aws_default_subnet" "az1" {
-  availability_zone = "${var.aws_region}a"
-}
+# resource "aws_default_subnet" "az1" {
+#   availability_zone = "${var.aws_region}a"
+# }
 
 data "aws_ami" "ubuntu_22_04_server_amd_64" {
   most_recent = true
@@ -75,9 +75,9 @@ resource "aws_security_group_rule" "ingress_http" {
 
 resource "aws_instance" "main" {
   ami                         = data.aws_ami.ubuntu_22_04_server_amd_64.id
-  instance_type               = "t3.small"
+  instance_type               = "t4g.micro"
   vpc_security_group_ids      = [aws_security_group.main.id]
-  subnet_id                   = aws_default_subnet.az1.id
+  subnet_id                   = aws_subnet.public[0].id
   user_data_replace_on_change = true
 
   instance_market_options {
