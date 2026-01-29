@@ -85,7 +85,7 @@ resource "aws_security_group_rule" "ingress_http" {
 
 resource "aws_instance" "main" {
   ami                         = data.aws_ami.ubuntu_22_04_server_amd_64.id
-  instance_type               = "t4g.micro"
+  instance_type               = "t3.micro"
   vpc_security_group_ids      = [aws_security_group.main.id]
   subnet_id                   = data.aws_subnets.available.ids[0]
   user_data_replace_on_change = true
