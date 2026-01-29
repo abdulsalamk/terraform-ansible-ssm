@@ -1,29 +1,119 @@
-name: Terraform CI/CD
-run-name: "Terraform CI/CD | triggered by @${{ github.actor }}"
+name: Terraform Deploy
 
 on:
-  push:
-    branches:
-      - 'main'
+    push:
+        branches:
+            - main
+
+env:
+    AWS_REGION: us-east-1
+    TF_VERSION: "1.12.1"
+    PROJECT_NAME: terraform-ansible-ssm
 
 jobs:
-  terraform-apply:
-    runs-on: ubuntu-latest
-    container:
-      image: wardove/terraform-ansible-ssm:latest
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: us-east-2
+    deploy:
+        name: Deploy Infrastructure and Configure Servers
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                shell: bash
+                working-directory: terraform
 
-    steps:
-      - uses: actions/checkout@v4
+        permissions:
+            id-token: write # Required for OIDC authentication
+            contents: read # Required to checkout the repository
 
-      - name: Terraform Init
-        run: terraform init
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
 
-      - name: Terraform Validate
-        run: terraform validate
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+                  aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
+            - name: Setup Terraform
+              uses: hashicorp/setup-terraform@v3
+              with:
+                  terraform_version: ${{ env.TF_VERSION }}
+
+            - name: Terraform Init
+              id: init
+              run: terraform init -input=false
+
+            - name: Terraform Format Check
+              id: fmt
+              run: terraform fmt -check -recursive
+
+            - name: Terraform Validate
+              id: validate
+              run: terraform validate
+
+            - name: Create ECR via Terraform (targeted)
+              id: tf_ecr
+              run: terraform apply -auto-approve -target=aws_ecr_repository.squid
+
+            - name: Login to Amazon ECR
+              id: ecr_login
+              uses: aws-actions/amazon-ecr-login@v2
+
+            - name: Mirror base image to ECR
+              id: mirror_base
+              working-directory: ${{ github.workspace }}
+              env:
+                  REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+                  BASE_PUBLIC: sameersbn/squid:latest
+                  BASE_ECR_REPO: ${{ env.PROJECT_NAME }}-base
+              run: |
+                  # Create base repo if it doesn't exist (idempotent)
+                  aws ecr describe-repositories --repository-names "$BASE_ECR_REPO" >/dev/null 2>&1 || \
+                  aws ecr create-repository --repository-name "$BASE_ECR_REPO" >/dev/null
+                  docker pull "$BASE_PUBLIC"
+                  docker tag "$BASE_PUBLIC" "$REGISTRY/$BASE_ECR_REPO:latest"
+                  docker push "$REGISTRY/$BASE_ECR_REPO:latest"
+
+            - name: Build and Push Docker image
+              id: docker_build_push
+              working-directory: ${{ github.workspace }}
+              env:
+                  REGISTRY: ${{ steps.ecr_login.outputs.registry }}
+                  ECR_REPOSITORY: ${{ env.PROJECT_NAME }}-proxy
+                  IMAGE_TAG: latest
+              run: |
+                  # Ensure proxy repo exists (idempotent)
+                  aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1 || \
+                  aws ecr create-repository --repository-name "$ECR_REPOSITORY" >/dev/null
+
+                  CONFIG_HASH=$(sha256sum squid/squid.conf | awk '{print $1}')
+                  docker build \
+                    --build-arg BASE_IMAGE="$REGISTRY/${{ env.PROJECT_NAME }}-base:latest" \
+                    --build-arg CONFIG_HASH="$CONFIG_HASH" \
+                    -t "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
+                    -t "$REGISTRY/$ECR_REPOSITORY:${{ github.sha }}" \
+                    .
+                  docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+                  docker push "$REGISTRY/$ECR_REPOSITORY:${{ github.sha }}"
+
+            - name: Terraform Plan
+              id: plan
+              run: terraform plan -input=false -var="container_image_tag=${{ github.sha }}" -out=tfplan
+              continue-on-error: true
+
+            - name: Terraform Plan Status
+              if: steps.plan.outcome == 'failure'
+              run: exit 1
+
+            - name: Terraform Apply
+              id: apply
+              run: terraform apply -auto-approve
+
+            - name: Deployment status notification
+              if: always()
+              run: |
+                  if [ "${{ job.status }}" = "success" ]; then
+                    echo "✅ Deployment completed successfully!"
+                  else
+                    echo "❌ Deployment failed!"
+                    exit 1
+                  fi

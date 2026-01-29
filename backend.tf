@@ -9,10 +9,9 @@ terraform {
   required_version = ">=1.9.0"
 
   backend "s3" {
-    bucket         = "tfstate-terraform-ansible-ssm-demo"
-    key            = "terraform-ansible-ssm"
-    region         = "us-east-2"
-    dynamodb_table = "terraform-ansible-ssm-terraform-locks"
+    bucket = "tfcert-statefiles"
+    key    = "GitHub/terraform-ansible-ssm/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 
