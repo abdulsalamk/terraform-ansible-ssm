@@ -2,6 +2,9 @@
 #   availability_zone = "${var.aws_region}a"
 # }
 
+data "aws_vpcs" "available" {
+}
+
 data "aws_ami" "ubuntu_22_04_server_amd_64" {
   most_recent = true
 
@@ -51,7 +54,7 @@ resource "aws_iam_role_policy_attachment" "main" {
 resource "aws_security_group" "main" {
   name        = "my-instance-sg"
   description = "Security group for private bastion instance"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = data.aws_vpcs.available.ids[0]
   tags        = local.default_tags
 }
 
