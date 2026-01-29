@@ -35,3 +35,5 @@ terraform apply
 - **Infrastructure as Code (IaC)**: Automate the provisioning of all necessary cloud components with Terraform, ensuring consistent and repeatable deployments.
 - **Secure Configuration Management**: Use Ansible with AWS Systems Manager to manage EC2 instances without SSH, enhancing security.
 - **Scalability and Efficiency**: Easily scale the solution to manage multiple AWS resources and workloads efficiently.
+
+apply!
